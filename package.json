@@ -1,5 +1,6 @@
 {
-  "name": "generate-addendum",
+  "name": "dinara-addendum",
+  "version": "1.0.0",
   "dependencies": {
     "docx": "^8.5.0"
   }
