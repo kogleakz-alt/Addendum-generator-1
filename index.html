@@ -102,7 +102,7 @@ body{background:var(--bg);color:var(--text);font-family:var(--sans);min-height:1
   <div class="sec">Contract</div>
   <div class="field"><label>Contract reference</label><input id="f-contract" placeholder="ARG-DKS-EUR 2025-01 dt 22.04.2025"></div>
   <div class="g2">
-    <div class="field"><label>Addendum №</label><input id="f-num" placeholder="15"></div>
+    <div class="field"><label>Addendum № (number only)</label><input id="f-num" placeholder="21" type="number"></div>
     <div class="field"><label>Date</label><input id="f-date"></div>
   </div>
   <div class="g2">
@@ -261,6 +261,17 @@ Return ONLY valid JSON no markdown:
     if(resp.error)throw new Error(resp.error.message);
     const raw=resp.content[0].text.replace(/```json|```/g,'').trim();
     const data=JSON.parse(raw.slice(raw.indexOf('{'),raw.lastIndexOf('}')+1));
+    // Add computed fields for template filler
+    data.price_formatted = (data.price_en||'').replace(/EUR |USD |CHF /,'').replace(/ per ton.*$/,'') + ' ' + (data.currency||'') + '/MT';
+    data.price_ru = data.price_formatted.replace('MT','т');
+    data.incoterm_ru = (data.incoterm||'');
+    data.qty_tons = (data.qty||'').split(' ')[0];
+    data.total_en = (data.total||'') + ' ' + (data.currency||'');
+    data.total_ru = (data.total||'') + ' ' + (data.currency||'');
+    data.seller_name = 'Dinara Apiyeva';
+    data.seller_name_ru = 'Динара Апиева';
+    data.seller_title = 'Director';
+    data.seller_title_ru = 'Директор';
     _last=data;
     renderDoc(data);
   }catch(e){toast('Error: '+e.message);console.error(e)}
