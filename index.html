@@ -314,132 +314,77 @@ function copyTxt(){
   navigator.clipboard.writeText(t).then(()=>toast('✓ Copied'));
 }
 
-async function loadDocxLib(){
-  if(window.docx) return true;
-  return new Promise((res)=>{
-    // Try multiple CDNs
-    const cdns=[
-      'https://unpkg.com/docx@8.5.0/build/index.umd.js',
-      'https://cdn.jsdelivr.net/npm/docx@8.5.0/build/index.umd.js',
-      'https://cdnjs.cloudflare.com/ajax/libs/docx/8.5.0/docx.umd.min.js'
-    ];
-    let i=0;
-    function tryNext(){
-      if(i>=cdns.length){res(false);return}
-      const s=document.createElement('script');
-      s.src=cdns[i++];
-      s.onload=()=>res(true);
-      s.onerror=tryNext;
-      document.head.appendChild(s);
-    }
-    tryNext();
-  });
-}
-
 async function dlDocx(){
   if(!_last){toast('Generate first');return}
-  toast('Loading library...');
-  const ok=await loadDocxLib();
-  if(!ok){toast('Could not load DOCX library. Check internet connection.');return}
-  if(!window.docx){toast('DOCX library unavailable');return}
-
-  const{Document,Packer,Paragraph,TextRun,Table,TableRow,TableCell,
-        AlignmentType,BorderStyle,WidthType,UnderlineType}=window.docx;
-  const d=_last;
-  const FONT='Times New Roman';
-  const SZ=22;
-
-  const nil={style:BorderStyle.NIL};
-  const noBrd={top:nil,bottom:nil,left:nil,right:nil};
-
-  function mkPara(text,opts={}){
-    const lines=(text||'').split('\n');
-    return new Paragraph({
-      alignment:opts.align||AlignmentType.LEFT,
-      spacing:{before:0,after:40},
-      children:lines.flatMap((l,i)=>[
-        ...(i>0?[new TextRun({break:1})]:[]),
-        new TextRun({text:l,font:FONT,size:SZ,
-          bold:opts.bold||false,
-          underline:opts.underline?{type:UnderlineType.SINGLE}:undefined})
-      ])
-    });
-  }
-
-  function mkCell(paras,width){
-    return new TableCell({
-      width:{size:width,type:WidthType.DXA},
-      borders:noBrd,
-      margins:{top:0,bottom:0,left:108,right:108},
-      children:paras
-    });
-  }
-
-  function spacer(){return mkCell([mkPara('')],345)}
-
-  function addRow(enParas,ruParas){
-    return new TableRow({children:[mkCell(enParas,4381),spacer(),mkCell(ruParas,4562)]});
-  }
-
-  function secRow(en,ru){
-    return addRow([mkPara('  '+en,{underline:true})],[mkPara('  '+ru,{underline:true})]);
-  }
-
-  function contentRow(en,ru){
-    return addRow([mkPara(en||'')],[mkPara(ru||'')]);
-  }
-
-  const rows=[
-    // Title
-    addRow(
-      (d.title_en||'').split('\n').map(l=>mkPara(l,{bold:true})),
-      (d.title_ru||'').split('\n').map(l=>mkPara(l,{bold:true,align:AlignmentType.CENTER}))
-    ),
-    // Date
-    addRow([mkPara(d.date_en||'')],[mkPara(d.date_ru||'')]),
-    secRow('1. GOODS','1. ТОВАР'),
-    contentRow((d.goods_en||'')+(d.lot?'\n'+d.lot:''),d.goods_ru||''),
-    contentRow(d.origin_en||'',d.origin_ru||''),
-    secRow('2. QUANTITY','2. КОЛИЧЕСТВО'),
-    contentRow(d.qty_en||'',d.qty_ru||''),
-    secRow('3. PRICE','3. ЦЕНА'),
-    contentRow(d.price_en||'',d.price_ru||''),
-    secRow('4. TOTAL VALUE','4. ОБЩАЯ СТОИМОСТЬ'),
-    contentRow(d.total_en||'',d.total_ru||''),
-    secRow('5. PAYMENT TERMS','5. УСЛОВИЯ ОПЛАТЫ'),
-    contentRow(d.payment_en||'',d.payment_ru||''),
-    secRow('6. PACKAGING','6. УПАКОВКА'),
-    contentRow(d.pack_en||'',d.pack_ru||''),
-    secRow('7. DELIVERY PERIOD and TERMS','7. СРОК и УСЛОВИЯ ПОСТАВКИ'),
-    contentRow(d.delivery_en||'',d.delivery_ru||''),
-  ];
-
-  const tbl=new Table({
-    width:{size:9288,type:WidthType.DXA},
-    columnWidths:[4381,345,4562],
-    rows
-  });
-
-  const doc=new Document({sections:[{
-    properties:{page:{
-      size:{width:12240,height:15840},
-      margin:{top:1134,right:850,bottom:1134,left:1134}
-    }},
-    children:[tbl]
-  }]});
-
+  toast('Generating document...');
   try{
-    const blob=await Packer.toBlob(doc);
-    const url=URL.createObjectURL(blob);
-    const a=document.createElement('a');
-    a.href=url;
-    a.download=`Addendum_N${gf('f-num')||'X'}_${(gf('f-contract')||'doc').replace(/[^a-zA-Z0-9]/g,'_').slice(0,30)}.docx`;
+    // Build payload matching template fields exactly
+    const contract = gf('f-contract');
+    const dateMatch = contract.match(/(\d{2}\.\d{2}\.\d{4})/);
+    const dateContract = dateMatch ? dateMatch[1] : '';
+    
+    const totalNum = (gf('f-total')||'').replace(/[^0-9]/g,'');
+    const currency = gf('f-currency')||'EUR';
+    
+    // Price formatted for template
+    const priceVal = (gf('f-price')||'').replace(/[^0-9'.,]/g,'');
+    const priceEN = currency+' '+priceVal+' per ton';
+    const priceRU = priceVal+' '+currency+'/т';
+    
+    const payload = {
+      num: gf('f-num'),
+      contract: contract,
+      date_contract: dateContract,
+      date: gf('f-date'),
+      goods_en: gf('f-product-en'),
+      goods_ru: gf('f-product-ru'),
+      origin_en: gf('f-origin-en'),
+      origin_ru: gf('f-origin-ru'),
+      qty: gf('f-qty'),
+      price_en: priceEN,
+      price_ru: priceRU,
+      incoterm: gf('f-incoterm'),
+      incoterm_ru: gf('f-incoterm'),
+      total_num: totalNum,
+      currency: currency,
+      payment_en: gf('f-payment-en'),
+      payment_ru: _last.payment_ru||gf('f-payment-en'),
+      pack_en: gf('f-pack-en'),
+      pack_ru: gf('f-pack-ru'),
+      delivery_en_1: (gf('f-delivery-en')||'').split('\n')[0],
+      delivery_en_2: (gf('f-delivery-en')||'').split('\n')[1]||gf('f-incoterm'),
+      delivery_ru_1: (_last.delivery_ru||'').split('\n')[0],
+      delivery_ru_2: (_last.delivery_ru||'').split('\n')[1]||gf('f-incoterm'),
+      seller_first: 'Dinara',
+      seller_last: 'Apiyeva',
+      seller_ru: 'Динара Апиева',
+      buyer_name: '',
+      buyer_ru: '',
+    };
+    
+    const res = await fetch('/.netlify/functions/generate',{
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify(payload)
+    });
+    
+    if(!res.ok){
+      const err = await res.json().catch(()=>({}));
+      throw new Error(err.error||'Server error '+res.status);
+    }
+    
+    const blob = await res.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'Addendum_N'+(gf('f-num')||'X')+'_'+(contract.replace(/[^a-zA-Z0-9]/g,'_').slice(0,20))+'.docx';
     document.body.appendChild(a);
     a.click();
-    setTimeout(()=>{document.body.removeChild(a);URL.revokeObjectURL(url)},1000);
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
     toast('✓ Downloaded');
   }catch(err){
-    toast('Download error: '+err.message);
+    toast('Error: '+err.message);
     console.error(err);
   }
 }
